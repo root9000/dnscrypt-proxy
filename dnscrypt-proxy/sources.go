@@ -3,9 +3,7 @@ package main
 import (
 	"bytes"
 	"fmt"
-	"io"
 	"io/ioutil"
-	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -47,7 +45,7 @@ func (source *Source) checkSignature(bin, sig []byte) (err error) {
 	if signature, err = minisign.DecodeSignature(string(sig)); err == nil {
 		_, err = source.minisignKey.Verify(bin, signature)
 	}
-	return
+	return err
 }
 
 // timeNow can be replaced by tests to provide a static value
@@ -132,12 +130,8 @@ func (source *Source) parseURLs(urls []string) {
 }
 
 func fetchFromURL(xTransport *XTransport, u *url.URL) (bin []byte, err error) {
-	var resp *http.Response
-	if resp, _, err = xTransport.Get(u, "", DefaultTimeout); err == nil {
-		bin, err = ioutil.ReadAll(io.LimitReader(resp.Body, MaxHTTPBodyLength))
-		resp.Body.Close()
-	}
-	return
+	bin, _, _, err = xTransport.Get(u, "", DefaultTimeout)
+	return bin, err
 }
 
 func (source *Source) fetchWithCache(xTransport *XTransport, now time.Time) (delay time.Duration, err error) {
@@ -217,7 +211,7 @@ func PrefetchSources(xTransport *XTransport, sources []*Source) time.Duration {
 		}
 		dlog.Debugf("Prefetching [%s]", source.name)
 		if delay, err := source.fetchWithCache(xTransport, now); err != nil {
-			dlog.Infof("Prefetching [%s] failed: %v", source.name, err)
+			dlog.Infof("Prefetching [%s] failed: %v, will retry in %v", source.name, err, interval)
 		} else {
 			dlog.Debugf("Prefetching [%s] succeeded, next update: %v", source.name, delay)
 			if delay >= MinimumPrefetchInterval && (interval == MinimumPrefetchInterval || interval > delay) {
